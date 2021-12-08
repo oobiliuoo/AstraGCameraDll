@@ -7,6 +7,9 @@ class CLASS_DECLSPEC BLAstraCamrea
 protected:
 	/*继续标志*/
 	bool shouldContinue = true;
+
+	/*相机运行线程*/
+	std::thread camthread;
 public:
 	/*Ir相机内参*/
 	cv::Mat IrParamMat;
@@ -34,7 +37,7 @@ public:
 	getColor: 打开颜色流 默认打开
 	getDepth: 打开深度流	默认打开
 	注意：
-		开启后程序会进入循环，持续不断的读取流数据，可通过设置回调函数或开启线程进行后续操作
+		开启后程序会打开线程，持续不断的读取流数据
 	*/
 	virtual int start(bool getColor = true, bool getDepth = true) = 0;
 
@@ -102,6 +105,14 @@ public:
 	注：设置显示模式会打开相应数据流
 	*/
 	virtual void setShowMode(int mode) = 0;
+
+
+	/*
+	设置相机join
+	主进程等待相机结束
+	注：手动关闭相机，线程结束，否则一直运行
+	*/
+	virtual void join() = 0;
 
 	/*关闭相机*/
 	virtual void close() = 0;

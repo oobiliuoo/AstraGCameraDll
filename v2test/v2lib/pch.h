@@ -11,5 +11,6 @@
 #include "framework.h"
 #include "opencv2/opencv.hpp"
 #include "OpenNI.h"
+#include <thread>
 
 #endif //PCH_H

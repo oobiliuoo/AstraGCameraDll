@@ -42,6 +42,7 @@ bool openDepth = true;
 cv::Mat depth_img;
 cv::Mat color_img;
 
+int errCode = 0;
 
 // 深度图像的监听类
 class DepthCallback : public VideoStream::NewFrameListener
@@ -209,6 +210,7 @@ void AstraGCamera::getCameraParams(openni::Device& Device)
 
 }
 
+
 /*
 	开启相机
 	getColor: 打开颜色流
@@ -237,12 +239,27 @@ int AstraGCamera::start(bool get_Color, bool get_Depth)
 		openDepth = true;
 	}
 
+
+	camthread = std::thread(cameraThread,(void*)this);
+
+
+}
+
+/*
+	相机线程 
+*/
+void * AstraGCamera::cameraThread(void* __this)
+{
+
+	AstraGCamera * _this = (AstraGCamera*)__this;
+
 	//初始化相机
 	Status rc = OpenNI::initialize();
 	if (rc != STATUS_OK)
 	{
 		printf("Initialize failed\n%s\n", OpenNI::getExtendedError());
-		return 1;
+		errCode = 1;
+		return &errCode;
 	}
 	Device device;
 	//获取Device对象
@@ -250,10 +267,11 @@ int AstraGCamera::start(bool get_Color, bool get_Depth)
 	if (rc != STATUS_OK)
 	{
 		printf("Couldn't open device\n%s\n", OpenNI::getExtendedError());
-		return 2;
+		errCode = 2;
+		return &errCode;
 	}
 
-	getCameraParams(device);
+	_this->getCameraParams(device);
 
 	// 开启颜色流
 	if (openColor)
@@ -262,7 +280,8 @@ int AstraGCamera::start(bool get_Color, bool get_Depth)
 		if (!depthPrinter.colorStream.isOpened())    // 判断是否打开成功
 		{
 			std::cout << "open camera failed. " << std::endl;
-			return -1;
+			errCode = 3;
+			return &errCode;
 		}
 
 		depthPrinter.openColor = true;
@@ -282,7 +301,8 @@ int AstraGCamera::start(bool get_Color, bool get_Depth)
 			if (rc != STATUS_OK)
 			{
 				printf("Couldn't create depth stream\n%s\n", OpenNI::getExtendedError());
-				return 3;
+				errCode = 4;
+				return &errCode;
 			}
 		}
 		//start depth stream
@@ -290,7 +310,8 @@ int AstraGCamera::start(bool get_Color, bool get_Depth)
 		if (rc != STATUS_OK)
 		{
 			printf("Couldn't start the depth stream\n%s\n", OpenNI::getExtendedError());
-			return 4;
+			errCode = 5;
+			return &errCode;
 		}
 
 
@@ -327,7 +348,7 @@ int AstraGCamera::start(bool get_Color, bool get_Depth)
 		}
 		Sleep(10);
 
-	} while (shouldContinue);
+	} while (_this->shouldContinue);
 
 	if (openDepth)
 	{
@@ -346,7 +367,6 @@ int AstraGCamera::start(bool get_Color, bool get_Depth)
 	device.close();
 	//shutdown OpenNI
 	OpenNI::shutdown();
-
 }
 
 /*
@@ -443,6 +463,12 @@ void AstraGCamera::setShowMode(int mode = 0)
 {
 	showMod = mode;
 
+}
+
+
+void AstraGCamera::join() 
+{
+	camthread.join();
 }
 
 

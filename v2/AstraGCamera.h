@@ -11,7 +11,8 @@ class CLASS_DECLSPEC AstraGCamera : public BLAstraCamrea
 
 protected:
 	// 获取相机内参
-	void  getCameraParams(openni::Device& Device);
+	void getCameraParams(openni::Device& Device);
+	static void* cameraThread(void *);
 
 public:
 	AstraGCamera();
@@ -38,6 +39,7 @@ public:
 	cv::Point3f piexl2cam(cv::Point2d);
 
 	void setShowMode(int mode);
+	void join();
 
 	// 关闭相机
 	void close();
