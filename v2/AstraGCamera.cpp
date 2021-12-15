@@ -54,12 +54,16 @@ public:
 		stream.readFrame(&m_frame);
 		depth_img = cv::Mat(m_frame.getHeight(), m_frame.getWidth(), CV_16SC1);
 		get_depth_img(m_frame, depth_img);
+
+		// 翻转深度图
+		cv::flip(depth_img, depth_img, 1);
+
 		// 获取颜色流
 		if (openColor)
 		{
 			colorStream >> color_img;
-			if (!color_img.empty())	// 判断是否为空
-				cv::flip(color_img, color_img, 1);
+			//if (!color_img.empty())	// 判断是否为空
+			//	cv::flip(color_img, color_img, 1);
 			//cv::imshow("color", color_img);
 
 		}
@@ -114,23 +118,28 @@ public:
 				pDepth = (DepthPixel*)frame.getData();
 				depth_img = cv::Mat(height_, width_, CV_16SC1, (void*)frame.getData());
 				//手动分配内存
-				const int byteLength = width_ * height_ * 3;
-				BufferPtr depthdisplayBuffer_ = BufferPtr(new uint8_t[byteLength]);
-				std::fill(&depthdisplayBuffer_[0], &depthdisplayBuffer_[0] + byteLength, 0);
-				//	std::cout << depth_img.at<uint16_t>(300, 220);			
-				for (int row = 0; row < height_; ++row)
-				{
-					for (int col = 0; col < width_; ++col)
-					{
-						const int index_color = row * width_ + col;
-						const int rgbaOffset = index_color * 3;
-						depthdisplayBuffer_[rgbaOffset] = uint8_t(pDepth[index_color]);   //将对应位置的深度图取出
-						depthdisplayBuffer_[rgbaOffset + 1] = uint8_t(pDepth[index_color]);
-						depthdisplayBuffer_[rgbaOffset + 2] = uint8_t(pDepth[index_color]);
+				//const int byteLength = width_ * height_ * 3;
+				//BufferPtr depthdisplayBuffer_ = BufferPtr(new uint8_t[byteLength]);
+				//std::fill(&depthdisplayBuffer_[0], &depthdisplayBuffer_[0] + byteLength, 0);
+				////	std::cout << depth_img.at<uint16_t>(300, 220);			
+				//for (int row = 0; row < height_; ++row)
+				//{
+				//	for (int col = 0; col < width_; ++col)
+				//	{
+				//		const int index_color = row * width_ + col;
+				//		const int rgbaOffset = index_color * 3;
+				//		depthdisplayBuffer_[rgbaOffset] = uint8_t(pDepth[index_color]);   //将对应位置的深度图取出
+				//		depthdisplayBuffer_[rgbaOffset + 1] = uint8_t(pDepth[index_color]);
+				//		depthdisplayBuffer_[rgbaOffset + 2] = uint8_t(pDepth[index_color]);
 
-					}
-				}
-				depth_img_show = cv::Mat(height_, width_, CV_8UC3, depthdisplayBuffer_.get()).clone();
+				//	}
+				//}
+				//depth_img_show = cv::Mat(height_, width_, CV_8UC3, depthdisplayBuffer_.get()).clone();
+				depth_img_show = depth_img.clone();
+				cv::normalize(depth_img_show, depth_img_show, 255, 1, cv::NORM_INF);
+				depth_img_show.convertTo(depth_img_show, CV_8UC1);
+				// 翻转深度图
+				cv::flip(depth_img_show, depth_img_show, 1);
 				//cv::imshow("depth", depth_img_show);
 				break;
 
