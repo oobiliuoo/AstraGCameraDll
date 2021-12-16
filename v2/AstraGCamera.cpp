@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "AstraGCamera.h"
 
+void piexl2Cam(cv::Point2d piexl, cv::Point3d& camPoint, double zc, cv::Mat cameraMatrix);
+
 AstraGCamera::AstraGCamera()
 {
 	IrParamMat = cv::Mat::zeros(cv::Size(3, 3), CV_32FC1);
@@ -20,6 +22,8 @@ typedef struct OBCameraParams2 {
 	float r_k[5];
 	int is_mirror;
 }OBCameraParams2;
+
+cv::Mat cameraParamsMat;
 
 // 回调标志
 bool keyCallbackFlog = false;
@@ -41,8 +45,56 @@ bool openDepth = true;
 
 cv::Mat depth_img;
 cv::Mat color_img;
+cv::Mat color_img_show;
 
 int errCode = 0;
+// Y轴的补偿
+static const int Y_ERR = 10;
+
+std::vector<cv::Point3d> camPs;
+
+void MouseEvent(int event, int x, int y, int flags, void* data)
+{
+	cv::Mat posMat = cv::Mat(40, 640, CV_8UC3, cv::Scalar(255,255,255));
+	static cv::Point pre_pt = cv::Point(-1, -1);//初始坐标
+	static cv::Point cur_pt = cv::Point(-1, -1);//实时坐标
+	cv::Point3d camP(0, 0, 0);
+	char temp[1024];
+
+	cur_pt = cv::Point(x, y);
+	cv::Point2d p1(x, y + Y_ERR);
+	float zc = (float)depth_img.at<uint16_t>(p1.y, p1.x);
+	piexl2Cam(p1, camP, zc, cameraParamsMat);
+
+	if (event == cv::EVENT_LBUTTONDOWN)//左键按下，读取初始坐标，并在图像上该点处划圆
+	{
+		//color_img.copyTo(img);//将原始图片复制到img中
+		camPs.push_back(camP);
+	
+	}
+	else if (event == cv::EVENT_RBUTTONDOWN) {
+		camPs.pop_back();
+	}
+	else if (event == cv::EVENT_MOUSEMOVE) {
+		sprintf_s(temp, "(%d,%d) cam:%f,%f,%f count:%d", x, y,camP.x,camP.y,camP.z,camPs.size());
+		pre_pt = cv::Point(0, 20);
+		cv::putText(posMat, temp, pre_pt, cv::FONT_HERSHEY_SIMPLEX, 0.6f, cv::Scalar(0, 0, 255), 1, 8);//在窗口上显示坐标
+	//	cv::circle(color_img_show, cur_pt, 2, cv::Scalar(255, 0, 0), cv::FILLED, 8, 0);//划圆
+		cv::imshow("pos", posMat);
+
+		cv::Mat depth_temp = depth_img.clone();
+		cv::normalize(depth_temp, depth_temp, 255, 1, cv::NORM_INF);
+		depth_temp.convertTo(depth_temp, CV_8UC1);
+		//// 翻转深度图
+
+		cv::putText(depth_temp, temp, pre_pt, cv::FONT_HERSHEY_SIMPLEX, 0.6f, cv::Scalar(0, 0, 255), 1, 8);//在窗口上显示坐标
+		cv::circle(depth_temp, p1, 2, cv::Scalar(255, 0, 0), cv::FILLED, 8, 0);//划圆
+		cv::imshow("imgd", depth_temp);
+
+	//	std::cout << cur_pt;
+	
+	}
+}
 
 // 深度图像的监听类
 class DepthCallback : public VideoStream::NewFrameListener
@@ -51,23 +103,32 @@ public:
 	// 每读到一帧就会执行以下函数
 	void onNewFrame(VideoStream& stream)
 	{
-		stream.readFrame(&m_frame);
-		depth_img = cv::Mat(m_frame.getHeight(), m_frame.getWidth(), CV_16SC1);
-		get_depth_img(m_frame, depth_img);
-
-		// 翻转深度图
-		cv::flip(depth_img, depth_img, 1);
 
 		// 获取颜色流
 		if (openColor)
 		{
 			colorStream >> color_img;
+			color_img_show = color_img.clone();
 			//if (!color_img.empty())	// 判断是否为空
 			//	cv::flip(color_img, color_img, 1);
 			//cv::imshow("color", color_img);
-
+			int width = color_img.cols;
+			int height = color_img.rows;
+			if (width != lastWidth_ || height != lastHeight_)
+			{
+				lastWidth_ = width;
+				lastHeight_ = height;
+			}
 		}
 
+		stream.readFrame(&m_frame);
+	//	depth_img = cv::Mat(m_frame.getHeight(), m_frame.getWidth(), CV_16SC1);
+		get_depth_img(m_frame, depth_img);
+		// 翻转深度图
+		cv::flip(depth_img, depth_img, 1);
+
+	
+		
 
 		switch (showMod)
 		{
@@ -76,7 +137,9 @@ public:
 			break;
 		case 1:
 		{
-			cv::imshow("color", color_img);
+			cv::namedWindow("color");
+			cv::setMouseCallback("color", MouseEvent);
+			cv::imshow("color", color_img_show);
 			break;
 		}
 		case 2:
@@ -86,7 +149,9 @@ public:
 		}
 		case 3:
 		{
-			cv::imshow("color", color_img);
+			cv::namedWindow("color");
+			cv::setMouseCallback("color", MouseEvent);
+			cv::imshow("color", color_img_show);
 			cv::imshow("depth", depth_img_show);
 
 		}
@@ -108,37 +173,63 @@ public:
 		if (frame.isValid())
 		{
 			DepthPixel* pDepth;
-			int height_ = frame.getHeight();
+			int height_ = 400;
 			int width_ = frame.getWidth();
+
+			const int byteLength = lastWidth_ * lastHeight_ * 3;
+
+			//determine if buffer needs to be reallocated
+			if (width_ != lastWidth_depth_ || height_ != lastHeight_depth_) {
+				buffer_depth_ = buffer_depth_ptr(new int16_t[byteLength/3]);
+				lastWidth_depth_ = width_;
+				lastHeight_depth_ = height_;
+
+			}
+
+			const float x_scale = float(lastWidth_) / lastWidth_depth_;
+			const float y_scale = float(lastHeight_) / lastHeight_depth_;
+
+			
+		//	std::cout << "x:" << x_scale << " y:" << y_scale << std::endl;
+		//	std::cout << "lastw:" << lastWidth_ << " h:" << lastHeight_ << std::endl;
+		//	std::cout << "lastw2:" << lastWidth_depth_ << " h:" << lastHeight_depth_ << std::endl;
+
 			switch (frame.getVideoMode().getPixelFormat())
 			{
 			case PIXEL_FORMAT_DEPTH_1_MM:
 			case PIXEL_FORMAT_DEPTH_100_UM:
 			{
 				pDepth = (DepthPixel*)frame.getData();
-				depth_img = cv::Mat(height_, width_, CV_16SC1, (void*)frame.getData());
+				// 自动对齐  ==================================
+				depth_img = cv::Mat(frame.getHeight(), frame.getWidth(), CV_16SC1, (void*)frame.getData());
+
+
+				// 手动对齐  ======================================================
 				//手动分配内存
-				//const int byteLength = width_ * height_ * 3;
 				//BufferPtr depthdisplayBuffer_ = BufferPtr(new uint8_t[byteLength]);
 				//std::fill(&depthdisplayBuffer_[0], &depthdisplayBuffer_[0] + byteLength, 0);
-				////	std::cout << depth_img.at<uint16_t>(300, 220);			
-				//for (int row = 0; row < height_; ++row)
-				//{
-				//	for (int col = 0; col < width_; ++col)
-				//	{
-				//		const int index_color = row * width_ + col;
-				//		const int rgbaOffset = index_color * 3;
-				//		depthdisplayBuffer_[rgbaOffset] = uint8_t(pDepth[index_color]);   //将对应位置的深度图取出
-				//		depthdisplayBuffer_[rgbaOffset + 1] = uint8_t(pDepth[index_color]);
-				//		depthdisplayBuffer_[rgbaOffset + 2] = uint8_t(pDepth[index_color]);
+				//	std::cout << depth_img.at<uint16_t>(300, 220);	
 
+				//for (int y = 0; y < lastHeight_; ++y)
+				//{
+				//	for (int x = 0; x < lastWidth_; ++x)
+				//	{
+				//		const int index_color = y * lastWidth_ + x;
+				//		const int index_depth = int(y / y_scale + 0.5) * lastWidth_depth_ + int(x / x_scale + 0.5);  //采用官方sample计算的索引.
+				//		const int rgbaOffset = index_color * 3;
+				//		depthdisplayBuffer_[rgbaOffset] = uint8_t(pDepth[index_depth]);   //将对应位置的深度图取出
+				//		depthdisplayBuffer_[rgbaOffset + 1] = uint8_t(pDepth[index_depth]);
+				//		depthdisplayBuffer_[rgbaOffset + 2] = uint8_t(pDepth[index_depth]);
+				//		buffer_depth_[index_color] = pDepth[index_depth];	
 				//	}
 				//}
-				//depth_img_show = cv::Mat(height_, width_, CV_8UC3, depthdisplayBuffer_.get()).clone();
+				//depth_img = cv::Mat(lastHeight_, lastWidth_, CV_16SC1,buffer_depth_.get());
+
+			//	depth_img_show = cv::Mat(height_, width_, CV_8UC3, depthdisplayBuffer_.get()).clone();
 				depth_img_show = depth_img.clone();
 				cv::normalize(depth_img_show, depth_img_show, 255, 1, cv::NORM_INF);
 				depth_img_show.convertTo(depth_img_show, CV_8UC1);
-				// 翻转深度图
+				//// 翻转深度图
 				cv::flip(depth_img_show, depth_img_show, 1);
 				//cv::imshow("depth", depth_img_show);
 				break;
@@ -158,10 +249,15 @@ private:
 	VideoFrameRef m_frame;
 public:
 	using BufferPtr = std::unique_ptr<uint8_t[]>;
+	using buffer_depth_ptr = std::unique_ptr<int16_t[]>;
+	buffer_depth_ptr buffer_depth_;
 	cv::VideoCapture colorStream;
 	bool openColor = false;
-
 	cv::Mat depth_img_show;
+	int lastWidth_{ 640 };
+	int lastHeight_{ 480 };
+	int lastWidth_depth_{ 0 };
+	int lastHeight_depth_{ 0 };
 
 };
 
@@ -172,6 +268,7 @@ DepthCallback depthPrinter;
 void AstraGCamera::getCameraParams(openni::Device& Device)
 {
 	OBCameraParams2 cameraParam;
+	//OBCameraParams2 cameraParam;
 	int dataSize = sizeof(cameraParam);
 	memset(&cameraParam, 0, sizeof(cameraParam));
 	openni::Status rc = Device.getProperty(openni::OBEXTENSION_ID_CAM_PARAMS, (uint8_t*)&cameraParam, &dataSize);
@@ -194,7 +291,7 @@ void AstraGCamera::getCameraParams(openni::Device& Device)
 	this->RgbParamMat.at<float>(2, 2) = 1.0;
 	//	std::cout << "IrParmMat:\n" << this->IrParamMat << std::endl;
 	//	std::cout << "RgbParmMat:\n" << this->RgbParamMat << std::endl;
-
+	cameraParamsMat = RgbParamMat.clone();
 
 	this->IrDistCoeffs = cv::Mat(1, 5, CV_32FC1, cameraParam.l_k).clone();
 	this->RgbDistCoeffs = cv::Mat(1, 5, CV_32FC1, cameraParam.r_k).clone();
@@ -376,6 +473,7 @@ void * AstraGCamera::cameraThread(void* __this)
 	device.close();
 	//shutdown OpenNI
 	OpenNI::shutdown();
+	cv::destroyAllWindows();
 }
 
 /*
@@ -452,7 +550,7 @@ cv::Point3f AstraGCamera::piexl2cam(cv::Point2d piexlPoint)
 		std::cout << "深度相机未打开!";
 		return cv::Point3f(0, 0, 0);
 	}
-	float zc = (float)depth_img.at<uint16_t>(piexlPoint.x, piexlPoint.y);
+	float zc = (float)depth_img.at<uint16_t>(piexlPoint.y+Y_ERR, piexlPoint.x);
 
 	float fx = RgbParamMat.at<float>(0, 0);
 	float fy = RgbParamMat.at<float>(1, 1);
@@ -463,9 +561,28 @@ cv::Point3f AstraGCamera::piexl2cam(cv::Point2d piexlPoint)
 	camPoint.x = zc * (piexlPoint.x - cx) / fx;
 	camPoint.y = zc * (piexlPoint.y - cy) / fy;
 	camPoint.z = zc;
+
+//	piexl2Cam(piexlPoint, camPoint, zc, RgbParamMat);
+
+
 	return camPoint;
 
 }
+
+
+void piexl2Cam(cv::Point2d piexl, cv::Point3d& camPoint, double zc, cv::Mat cameraMatrix) {
+
+	double fx = cameraMatrix.at<float>(0, 0);
+	double fy = cameraMatrix.at<float>(1, 1);
+	double cx = cameraMatrix.at<float>(0, 2);
+	double cy = cameraMatrix.at<float>(1, 2);
+
+	camPoint.x = zc * (piexl.x - cx) / fx;
+	camPoint.y = zc * (piexl.y - cy) / fy;
+	camPoint.z = zc;
+
+}
+
 
 
 void AstraGCamera::setShowMode(int mode = 0)
@@ -480,6 +597,17 @@ void AstraGCamera::join()
 	camthread.join();
 }
 
+
+std::vector<cv::Point3d> AstraGCamera::getCamPoints()
+{
+	return camPs;
+}
+
+
+void AstraGCamera::clearCamPoints() 
+{
+	camPs.clear();
+}
 
 /*关闭相机*/
 void AstraGCamera::close()

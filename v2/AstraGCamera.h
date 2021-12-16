@@ -41,9 +41,14 @@ public:
 	void setShowMode(int mode);
 	void join();
 
+	std::vector<cv::Point3d> getCamPoints();
+
+	void clearCamPoints();
+
 	// ¹Ø±ÕÏà»ú
 	void close();
 
+	 
 
 };
 

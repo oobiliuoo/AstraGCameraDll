@@ -117,5 +117,16 @@ public:
 	/*关闭相机*/
 	virtual void close() = 0;
 
+	/*
+	获取的相机点集
+	return: 鼠标点击事件的点
+	*/
+	virtual	std::vector<cv::Point3d> getCamPoints() = 0;
+
+	/*
+	清空相机点集
+	*/
+	virtual void clearCamPoints() = 0;
+
 };
 

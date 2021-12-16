@@ -13,6 +13,13 @@ void callback(cv::Mat color, cv::Mat depth)
 		cam->close();
 	
 	}
+	else if (key == 66) 
+	{
+		std::vector<cv::Point3d> camPs = cam->getCamPoints();
+		std::cout << camPs[0];
+
+	}
+
 
 }
 
