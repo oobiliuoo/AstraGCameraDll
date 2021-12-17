@@ -40,19 +40,29 @@ std::function<void(cv::Mat, cv::Mat)> keyCallback;
 */
 int showMod = 0;
 
+// 打开颜色流标志
 bool openColor = true;
+// 打开深度流标志
 bool openDepth = true;
 
+// 实时深度图
 cv::Mat depth_img;
+// 实时彩色图
 cv::Mat color_img;
+// 用于显示的彩色图
 cv::Mat color_img_show;
 
+// 错误代码
 int errCode = 0;
 // Y轴的补偿
-static const int Y_ERR = 10;
+static const int Y_ERR = 20;
+// Z轴的补偿
+static const int Z_ERR = 5;
 
+// 保存鼠标点击获取的三维点
 std::vector<cv::Point3d> camPs;
 
+// color 鼠标监听事件
 void MouseEvent(int event, int x, int y, int flags, void* data)
 {
 	cv::Mat posMat = cv::Mat(40, 640, CV_8UC3, cv::Scalar(255,255,255));
@@ -63,7 +73,9 @@ void MouseEvent(int event, int x, int y, int flags, void* data)
 
 	cur_pt = cv::Point(x, y);
 	cv::Point2d p1(x, y + Y_ERR);
-	float zc = (float)depth_img.at<uint16_t>(p1.y, p1.x);
+	cv::Mat depth_t = depth_img.clone();
+	float zc = (float)depth_t.at<uint16_t>(p1.y, p1.x);
+	if (zc != 0)	zc += Z_ERR;
 	piexl2Cam(p1, camP, zc, cameraParamsMat);
 
 	if (event == cv::EVENT_LBUTTONDOWN)//左键按下，读取初始坐标，并在图像上该点处划圆
@@ -73,7 +85,12 @@ void MouseEvent(int event, int x, int y, int flags, void* data)
 	
 	}
 	else if (event == cv::EVENT_RBUTTONDOWN) {
-		camPs.pop_back();
+		if(camPs.size()!=0)
+			camPs.pop_back();
+		else
+		{
+			std::cout << "当前已经清空！\n";
+		}
 	}
 	else if (event == cv::EVENT_MOUSEMOVE) {
 		sprintf_s(temp, "(%d,%d) cam:%f,%f,%f count:%d", x, y,camP.x,camP.y,camP.z,camPs.size());
@@ -82,6 +99,8 @@ void MouseEvent(int event, int x, int y, int flags, void* data)
 	//	cv::circle(color_img_show, cur_pt, 2, cv::Scalar(255, 0, 0), cv::FILLED, 8, 0);//划圆
 		cv::imshow("pos", posMat);
 
+		// -----------------打开下面用于校准深度图
+		/*
 		cv::Mat depth_temp = depth_img.clone();
 		cv::normalize(depth_temp, depth_temp, 255, 1, cv::NORM_INF);
 		depth_temp.convertTo(depth_temp, CV_8UC1);
@@ -89,10 +108,8 @@ void MouseEvent(int event, int x, int y, int flags, void* data)
 
 		cv::putText(depth_temp, temp, pre_pt, cv::FONT_HERSHEY_SIMPLEX, 0.6f, cv::Scalar(0, 0, 255), 1, 8);//在窗口上显示坐标
 		cv::circle(depth_temp, p1, 2, cv::Scalar(255, 0, 0), cv::FILLED, 8, 0);//划圆
-		cv::imshow("imgd", depth_temp);
-
-	//	std::cout << cur_pt;
-	
+		cv::imshow("imgd", depth_temp);	
+		*/
 	}
 }
 
@@ -163,8 +180,6 @@ public:
 			keyCallback(color_img, depth_img);
 		else
 			cv::waitKey(10);
-
-
 
 	}
 
@@ -348,7 +363,7 @@ int AstraGCamera::start(bool get_Color, bool get_Depth)
 
 	camthread = std::thread(cameraThread,(void*)this);
 
-
+	return 0;
 }
 
 /*
@@ -551,7 +566,8 @@ cv::Point3f AstraGCamera::piexl2cam(cv::Point2d piexlPoint)
 		return cv::Point3f(0, 0, 0);
 	}
 	float zc = (float)depth_img.at<uint16_t>(piexlPoint.y+Y_ERR, piexlPoint.x);
-
+	if(zc!=0)
+		zc += Z_ERR;
 	float fx = RgbParamMat.at<float>(0, 0);
 	float fy = RgbParamMat.at<float>(1, 1);
 	float cx = RgbParamMat.at<float>(0, 2);
@@ -571,6 +587,7 @@ cv::Point3f AstraGCamera::piexl2cam(cv::Point2d piexlPoint)
 
 
 void piexl2Cam(cv::Point2d piexl, cv::Point3d& camPoint, double zc, cv::Mat cameraMatrix) {
+
 
 	double fx = cameraMatrix.at<float>(0, 0);
 	double fy = cameraMatrix.at<float>(1, 1);

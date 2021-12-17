@@ -31,7 +31,7 @@ void test1()
 	// 获取相机对象
     cam = b.createBLAstraCamera();
 	// 设置回调函数，可实时处理图像
-	cam->setkeyCallback(callback);
+//	cam->setkeyCallback(callback);
 	// 设置窗口显示
 	cam->setShowMode(3);
 	// 打开相机
@@ -51,7 +51,8 @@ void test1()
 			// 获取信息
 			
 			std::cout << "prams:" << cam->getRgbParamMat();
-
+			std::cout << "K:" << cam->getRgbDistCoeffs();
+				
 			// 获取彩色图
 			cv::Mat color = cam->getColor();
 			cv::imshow("color2", color);
