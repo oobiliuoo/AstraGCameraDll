@@ -59,8 +59,16 @@ static const int Y_ERR = 20;
 // Z轴的补偿
 static const int Z_ERR = 5;
 
+// 彩色相机设备号
+int color_cam_code = 0;
+
+// 设备是否运行
+bool cam_is_run = 1;
+
 // 保存鼠标点击获取的三维点
 std::vector<cv::Point3d> camPs;
+// 保存鼠标点击获取的二维点
+std::vector<cv::Point2d> piexlPs;
 
 // color 鼠标监听事件
 void MouseEvent(int event, int x, int y, int flags, void* data)
@@ -75,18 +83,22 @@ void MouseEvent(int event, int x, int y, int flags, void* data)
 	cv::Point2d p1(x, y + Y_ERR);
 	cv::Mat depth_t = depth_img.clone();
 	float zc = (float)depth_t.at<uint16_t>(p1.y, p1.x);
-	if (zc != 0)	zc += Z_ERR;
-	piexl2Cam(p1, camP, zc, cameraParamsMat);
+
+	piexl2Cam(cur_pt, camP, zc, cameraParamsMat);
 
 	if (event == cv::EVENT_LBUTTONDOWN)//左键按下，读取初始坐标，并在图像上该点处划圆
 	{
 		//color_img.copyTo(img);//将原始图片复制到img中
 		camPs.push_back(camP);
+		piexlPs.push_back(cur_pt);
 	
 	}
 	else if (event == cv::EVENT_RBUTTONDOWN) {
-		if(camPs.size()!=0)
+		if (camPs.size() != 0)
+		{
 			camPs.pop_back();
+			piexlPs.pop_back();
+		}
 		else
 		{
 			std::cout << "当前已经清空！\n";
@@ -100,7 +112,7 @@ void MouseEvent(int event, int x, int y, int flags, void* data)
 		cv::imshow("pos", posMat);
 
 		// -----------------打开下面用于校准深度图
-		/*
+		
 		cv::Mat depth_temp = depth_img.clone();
 		cv::normalize(depth_temp, depth_temp, 255, 1, cv::NORM_INF);
 		depth_temp.convertTo(depth_temp, CV_8UC1);
@@ -109,9 +121,11 @@ void MouseEvent(int event, int x, int y, int flags, void* data)
 		cv::putText(depth_temp, temp, pre_pt, cv::FONT_HERSHEY_SIMPLEX, 0.6f, cv::Scalar(0, 0, 255), 1, 8);//在窗口上显示坐标
 		cv::circle(depth_temp, p1, 2, cv::Scalar(255, 0, 0), cv::FILLED, 8, 0);//划圆
 		cv::imshow("imgd", depth_temp);	
-		*/
+		
 	}
 }
+
+
 
 // 深度图像的监听类
 class DepthCallback : public VideoStream::NewFrameListener
@@ -120,6 +134,12 @@ public:
 	// 每读到一帧就会执行以下函数
 	void onNewFrame(VideoStream& stream)
 	{
+
+		if (!stream.isValid())
+		{
+			cam_is_run = 0; 
+			return;
+		}
 
 		// 获取颜色流
 		if (openColor)
@@ -143,8 +163,11 @@ public:
 		get_depth_img(m_frame, depth_img);
 		// 翻转深度图
 		cv::flip(depth_img, depth_img, 1);
-
-	
+		
+		if (depth_img.empty())
+		{
+			return;
+		}
 		
 
 		switch (showMod)
@@ -360,9 +383,8 @@ int AstraGCamera::start(bool get_Color, bool get_Depth)
 		openDepth = true;
 	}
 
-
-	camthread = std::thread(cameraThread,(void*)this);
-
+	camthread = std::thread(cameraThread, (void*)this);
+//	std::thread(cameraThread, (void*)this);
 	return 0;
 }
 
@@ -383,6 +405,7 @@ void * AstraGCamera::cameraThread(void* __this)
 		return &errCode;
 	}
 	Device device;
+	
 	//获取Device对象
 	rc = device.open(ANY_DEVICE);
 	if (rc != STATUS_OK)
@@ -397,7 +420,7 @@ void * AstraGCamera::cameraThread(void* __this)
 	// 开启颜色流
 	if (openColor)
 	{
-		depthPrinter.colorStream.open(0);
+		depthPrinter.colorStream.open(color_cam_code);
 		if (!depthPrinter.colorStream.isOpened())    // 判断是否打开成功
 		{
 			std::cout << "open camera failed. " << std::endl;
@@ -452,6 +475,11 @@ void * AstraGCamera::cameraThread(void* __this)
 	std::cout << "camera running ..\n";
 	do
 	{
+		if (!device.isValid()) {
+			cam_is_run=0;
+			std::cout << "over...";
+			break;
+		}
 		if (!openDepth)
 		{
 			depthPrinter.colorStream >> color_img;
@@ -489,6 +517,7 @@ void * AstraGCamera::cameraThread(void* __this)
 	//shutdown OpenNI
 	OpenNI::shutdown();
 	cv::destroyAllWindows();
+	std::cout << "over...";
 }
 
 /*
@@ -588,7 +617,7 @@ cv::Point3f AstraGCamera::piexl2cam(cv::Point2d piexlPoint)
 
 void piexl2Cam(cv::Point2d piexl, cv::Point3d& camPoint, double zc, cv::Mat cameraMatrix) {
 
-
+	if (zc != 0)	zc += Z_ERR;
 	double fx = cameraMatrix.at<float>(0, 0);
 	double fy = cameraMatrix.at<float>(1, 1);
 	double cx = cameraMatrix.at<float>(0, 2);
@@ -626,10 +655,34 @@ void AstraGCamera::clearCamPoints()
 	camPs.clear();
 }
 
+
+std::vector<cv::Point2d> AstraGCamera::getPiexlPoints()
+{
+	return piexlPs;
+}
+
+
+void AstraGCamera::clearPiexlPoints()
+{
+	piexlPs.clear();
+}
+
+void AstraGCamera::setColorCamCode(int code)
+{
+	color_cam_code = code;
+}
+
+bool AstraGCamera::isConnect()
+{
+	return cam_is_run;
+}
+
+
 /*关闭相机*/
 void AstraGCamera::close()
 {
 	shouldContinue = false;
+	
 }
 
 AstraGCamera::~AstraGCamera()

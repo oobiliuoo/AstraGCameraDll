@@ -2,6 +2,7 @@
 
 #include "pch.h"
 #include "BLAstraGCamera.h"
+#include <fstream>
 
 using namespace openni;
 
@@ -13,6 +14,7 @@ protected:
 	// 获取相机内参
 	void getCameraParams(openni::Device& Device);
 	static void* cameraThread(void *);
+
 
 public:
 	AstraGCamera();
@@ -45,10 +47,17 @@ public:
 
 	void clearCamPoints();
 
+	std::vector<cv::Point2d> getPiexlPoints();
+
+	void clearPiexlPoints();
+
+	void setColorCamCode(int);
+
 	// 关闭相机
 	void close();
 
-	 
+	bool isConnect();
+
 
 };
 

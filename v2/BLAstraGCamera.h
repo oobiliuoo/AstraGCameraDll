@@ -10,6 +10,8 @@ protected:
 
 	/*相机运行线程*/
 	std::thread camthread;
+	/*相机驱动*/
+//	openni::Device device;
 public:
 	/*Ir相机内参*/
 	cv::Mat IrParamMat;
@@ -127,6 +129,24 @@ public:
 	清空相机点集
 	*/
 	virtual void clearCamPoints() = 0;
+
+	/*
+	获取的图像点集
+	return: 鼠标点击事件的点
+	*/
+	virtual	std::vector<cv::Point2d> getPiexlPoints() = 0;
+
+	/*
+	清空图像点集
+	*/
+	virtual void clearPiexlPoints() = 0;
+
+	/*
+	设置彩色流的驱动号
+	*/
+	virtual void setColorCamCode(int code) = 0;
+
+	virtual bool isConnect() = 0;
 
 };
 

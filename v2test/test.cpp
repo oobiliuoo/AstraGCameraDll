@@ -32,10 +32,11 @@ void test1()
     cam = b.createBLAstraCamera();
 	// 设置回调函数，可实时处理图像
 //	cam->setkeyCallback(callback);
-	// 设置窗口显示
+	// 设置窗口显
 	cam->setShowMode(3);
+	cam->setColorCamCode(0);
 	// 打开相机
-	cam->start();
+	cam->start(0,1);
 
 	// 在这里做一些其它操作
 	while (true) 
@@ -67,6 +68,11 @@ void test1()
 		{
 			cam->close();
 			break;
+		}
+		if (cmd == "w")
+		{
+			std::cout<<cam->isConnect();
+			cam->start();
 		}
 	
 	}
